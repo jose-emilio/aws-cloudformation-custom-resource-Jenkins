@@ -142,7 +142,7 @@ La plantilla `template.yaml` define:
 
 ### Beneficios de la Integración
 
-La integración de este proyecto con AWS Service Catalog permite:
+Este proyecto puede fácilmente integrarse con AWS Service Catalog para ofrecer la administración de Proyectos Jenkin como Productos, lo que permite:
 - Gestión centralizada de proyectos Jenkins como productos IT
 - Aprovisionamiento self-service para equipos de desarrollo
 - Control de acceso granular mediante portfolios
