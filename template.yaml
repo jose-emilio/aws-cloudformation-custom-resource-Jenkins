@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'CloudFormation template for creating a Jenkins freestyle project using Custom Resource'
+
+Parameters:
+  JenkinsUrl:
+    Type: String
+    Description: 'URL del servidor Jenkins'
+  JenkinsUsername:
+    Type: String
+    Description: 'Nombre de usuario de Jenkins'
+  JenkinsProjectName:
+    Type: String
+    Description: 'Nombre del proyecto Jenkins'
+    Default: 'demo-project'
+  JenkinsApiToken:
+    Type: String
+    Description: 'API Token de Jenkins'
+    NoEcho: true
+  LambdaS3Bucket:
+    Type: String
+    Description: 'Bucket de S3 que contiene el archivo ZIP de la Lambda y la capa'
+  LambdaS3Key:
+    Type: String
+    Description: 'Clave de S3 que contiene el archivo ZIP de la Lambda'
+    Default: 'lambda.zip'
+  LayerS3Key:
+    Type: String
+    Description: 'Clave de S3 que contiene el archivo ZIP de la capa'
+    Default: 'layer.zip'
+  JenkinsS3Bucket:
+    Type: String
+    Description: 'Bucket de S3 que contiene el archivo de configuración del proyecto Jenkins'
+  JenkinsS3Key:
+    Type: String
+    Description: 'Clave de S3 que contiene el archivo de configuración del proyecto Jenkins'
+    Default: 'config.xml'
+  
+Resources:
+
+  JenkinsApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${AWS::StackName}/jenkins/api-key'
+      Description: Clave de API de Jenkins
+      SecretString: !Ref JenkinsApiToken
+
+  DependenciesLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Description: Capa de dependencias de la función Lambda
+      Content:
+        S3Bucket: !Ref LambdaS3Bucket
+        S3Key: !Ref LayerS3Key
+      CompatibleRuntimes:
+        - python3.13
+      CompatibleArchitectures:
+        - x86_64
+
+  JenkinsCustomResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${JenkinsS3Bucket}/${JenkinsS3Key}'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref JenkinsApiKeySecret
+
+  JenkinsProjectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.13
+      Handler: proyecto-jenkins.manejador
+      Role: !GetAtt JenkinsCustomResourceRole.Arn
+      Layers:
+        - !Ref DependenciesLayer
+      Environment:
+        Variables:
+          JENKINS_API_KEY_SECRET: !Ref JenkinsApiKeySecret
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket
+        S3Key: !Ref LambdaS3Key
+      Timeout: 300
+        
+  JenkinsProject:
+    Type: Custom::ProyectoJenkins
+    Properties:
+      ServiceToken: !GetAtt JenkinsProjectFunction.Arn
+      JenkinsUrl: !Ref JenkinsUrl
+      JenkinsUsername: !Ref JenkinsUsername
+      ProjectName: !Ref JenkinsProjectName
+      JenkinsApiToken: !Ref JenkinsApiToken
+      JenkinsS3Bucket: !Ref JenkinsS3Bucket
+      JenkinsS3Key: !Ref JenkinsS3Key
